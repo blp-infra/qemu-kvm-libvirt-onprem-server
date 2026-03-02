@@ -1,0 +1,69 @@
+---
+- name: Ensure at package is installed
+  apt:
+    name: at
+    state: present
+    update_cache: false
+
+- name: Ensure atd service is running
+  service:
+    name: atd
+    state: started
+    enabled: true
+
+- name: Remove bridge netplan config
+  file:
+    path: /etc/netplan/60-br0-bridge.yaml
+    state: absent
+
+- name: Restore original netplan config
+  copy:
+    dest: /etc/netplan/50-cloud-init.yaml
+    content: |
+      network:
+        version: 2
+        ethernets:
+          ens21f0np0:
+            addresses:
+              - 192.168.1.71/24
+            gateway4: 192.168.1.5
+            nameservers:
+              addresses: [8.8.8.8, 1.1.1.1]
+          ens21f1np1:
+            addresses:
+              - 192.168.1.70/24
+            gateway4: 192.168.1.5
+            nameservers:
+              addresses: [8.8.8.8, 1.1.1.1]
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Remove IP from br0
+  command: ip addr flush dev br0
+  ignore_errors: true
+
+- name: Bring br0 down
+  command: ip link set br0 down
+  ignore_errors: true
+
+- name: Release ens21f0np0 from bridge
+  command: ip link set ens21f0np0 nomaster
+  ignore_errors: true
+
+- name: Delete br0 interface
+  command: ip link delete br0
+  ignore_errors: true
+
+- name: Remove cloud-init disable file
+  file:
+    path: /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+    state: absent
+
+- name: Schedule netplan apply via at (runs after Ansible exits)
+  shell: echo "netplan apply" | at now + 1 minutes
+  become: true
+
+- name: Inform user to reconnect after 60 seconds
+  debug:
+    msg: "Network will restart in ~60 seconds. Reconnect to 192.168.1.71 after that."

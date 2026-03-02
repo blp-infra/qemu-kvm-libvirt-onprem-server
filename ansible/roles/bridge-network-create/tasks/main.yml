@@ -1,0 +1,70 @@
+---
+- name: Disable cloud-init network management
+  copy:
+    dest: /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+    content: "network: {config: disabled}\n"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Deploy bridge netplan config
+  template:
+    src: br0-netplan.j2
+    dest: /etc/netplan/60-br0-bridge.yaml
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Remove old cloud-init netplan file
+  file:
+    path: /etc/netplan/50-cloud-init.yaml
+    state: absent
+
+- name: Validate netplan config
+  command: netplan --debug generate
+  register: netplan_validate
+  changed_when: false
+
+- name: Show netplan validation output
+  debug:
+    msg: "{{ netplan_validate.stderr_lines }}"
+
+- name: Apply netplan config
+  command: netplan apply
+  async: 10
+  poll: 0
+
+- name: Wait for network to come back
+  wait_for:
+    host: 192.168.1.5
+    port: 22
+    delay: 5
+    timeout: 60
+  ignore_errors: true
+
+- name: Verify bridge exists
+  command: ip link show br0
+  register: br0_check
+  changed_when: false
+
+- name: Show bridge status
+  debug:
+    msg: "{{ br0_check.stdout_lines }}"
+
+- name: Verify IP on bridge
+  command: ip addr show br0
+  register: br0_ip
+  changed_when: false
+
+- name: Show bridge IP
+  debug:
+    msg: "{{ br0_ip.stdout_lines }}"
+
+- name: Verify default route
+  command: ip route show default
+  register: default_route
+  changed_when: false
+
+- name: Show default route
+  debug:
+    msg: "{{ default_route.stdout_lines }}"

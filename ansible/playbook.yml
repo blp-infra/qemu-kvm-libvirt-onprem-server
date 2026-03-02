@@ -10,6 +10,10 @@
     - role: bridge-network-create
       tags: bridge-network-create
 
+    - role: bridge-network-destroy
+      tags: bridge-network-destroy
+
+
     - role: kvm-install
       tags: kvm-install
 
