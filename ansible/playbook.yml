@@ -1,0 +1,20 @@
+---
+- name: configure server
+  hosts: localhost
+  connection: local
+  become: true
+  roles:
+    - role: partition-disk
+      tags: partition-disk
+
+    - role: bridge-network-create
+      tags: bridge-network-create
+
+    - role: kvm-install
+      tags: kvm-install
+
+    - role: rhel-vm-create
+      tags: rhel-vm-create
+
+    - role: rhel-vm-destroy
+      tags: rhel-vm-destroy

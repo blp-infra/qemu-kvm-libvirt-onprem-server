@@ -1,0 +1,10 @@
+disk_device: /dev/sda
+partition1_device: /dev/sda1
+partition2_device: /dev/sda2
+partition1_size: "+500G"
+partition1_mount: /var/lib/libvirt/images
+partition2_mount: /data
+filesystem_type: ext4
+data_subdirs:
+  - /data/isos
+  - /data/snapshots

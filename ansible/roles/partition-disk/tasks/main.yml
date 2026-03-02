@@ -1,0 +1,119 @@
+- name: Check if sda is already partitioned
+  command: lsblk /dev/sda -o NAME,TYPE -n
+  register: sda_check
+  changed_when: false
+
+- name: Wipe existing partition table on sda
+  command: wipefs -a /dev/sda
+  when: "'part' in sda_check.stdout"
+
+- name: Re-check sda after potential wipe
+  command: lsblk /dev/sda -o NAME,TYPE -n
+  register: sda_check_after
+  changed_when: false
+
+- name: Partition sda using sfdisk (sda1=500GB, sda2=rest)
+  shell: |
+    sfdisk /dev/sda << 'EOF'
+    label: dos
+    device: /dev/sda
+    unit: sectors
+    /dev/sda1 : start=2048, size=1048576000, type=83
+    /dev/sda2 : start=1048578048, type=83
+    EOF
+  register: sfdisk_result
+  when: "'part' not in sda_check_after.stdout"
+
+- name: Inform kernel of partition changes
+  command: partprobe /dev/sda
+  when: sfdisk_result.changed
+
+- name: Wait for sda1 to appear
+  wait_for:
+    path: /dev/sda1
+    timeout: 30
+
+- name: Wait for sda2 to appear
+  wait_for:
+    path: /dev/sda2
+    timeout: 30
+
+- name: Format sda1 as ext4
+  filesystem:
+    fstype: ext4
+    dev: /dev/sda1
+    force: false
+
+- name: Format sda2 as ext4
+  filesystem:
+    fstype: ext4
+    dev: /dev/sda2
+    force: false
+
+- name: Create mount point for libvirt images
+  file:
+    path: /var/lib/libvirt/images
+    state: directory
+    mode: '0755'
+
+- name: Create mount point for data
+  file:
+    path: /data
+    state: directory
+    mode: '0755'
+
+- name: Get UUID of sda1
+  command: blkid -s UUID -o value /dev/sda1
+  register: uuid_sda1
+  changed_when: false
+
+- name: Get UUID of sda2
+  command: blkid -s UUID -o value /dev/sda2
+  register: uuid_sda2
+  changed_when: false
+
+- name: Add sda1 to fstab
+  lineinfile:
+    path: /etc/fstab
+    line: "UUID={{ uuid_sda1.stdout }} /var/lib/libvirt/images ext4 defaults 0 2"
+    state: present
+
+- name: Add sda2 to fstab
+  lineinfile:
+    path: /etc/fstab
+    line: "UUID={{ uuid_sda2.stdout }} /data ext4 defaults 0 2"
+    state: present
+
+- name: Mount sda1
+  mount:
+    path: /var/lib/libvirt/images
+    src: "UUID={{ uuid_sda1.stdout }}"
+    fstype: ext4
+    state: mounted
+
+- name: Mount sda2
+  mount:
+    path: /data
+    src: "UUID={{ uuid_sda2.stdout }}"
+    fstype: ext4
+    state: mounted
+
+- name: Create subdirectories under /data
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /data/isos
+    - /data/snapshots
+
+- name: Verify mounts
+  command: df -h
+  register: df_output
+  changed_when: false
+
+- name: Show mount result
+  debug:
+    msg: "{{ df_output.stdout_lines }}"
+
+
