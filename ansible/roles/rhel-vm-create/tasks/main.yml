@@ -1,0 +1,101 @@
+---
+- name: Fix libvirt images directory permissions
+  file:
+    path: /var/lib/libvirt/images
+    owner: root
+    group: libvirt
+    mode: '0771'
+    state: directory
+
+- name: Copy base qcow2 image for each VM
+  copy:
+    src: "{{ base_image }}"
+    dest: "{{ images_path }}/{{ vm.name }}.qcow2"
+    remote_src: true
+    force: false
+  loop: "{{ vms }}"
+  loop_control:
+    loop_var: vm
+
+- name: Resize VM disk to 100GB
+  command: qemu-img resize {{ images_path }}/{{ vm.name }}.qcow2 {{ vm_disk_size }}
+  loop: "{{ vms }}"
+  loop_control:
+    loop_var: vm
+
+- name: Create cloud-init directory for each VM
+  file:
+    path: "{{ images_path }}/{{ vm.name }}-cloudinit"
+    state: directory
+    mode: '0755'
+  loop: "{{ vms }}"
+  loop_control:
+    loop_var: vm
+
+- name: Generate user-data for each VM
+  template:
+    src: user-data.j2
+    dest: "{{ images_path }}/{{ vm.name }}-cloudinit/user-data"
+  loop: "{{ vms }}"
+  loop_control:
+    loop_var: vm
+
+- name: Generate meta-data for each VM
+  template:
+    src: meta-data.j2
+    dest: "{{ images_path }}/{{ vm.name }}-cloudinit/meta-data"
+  loop: "{{ vms }}"
+  loop_control:
+    loop_var: vm
+
+- name: Create cloud-init seed ISO for each VM
+  command: >
+    cloud-localds {{ images_path }}/{{ vm.name }}-seed.iso
+    {{ images_path }}/{{ vm.name }}-cloudinit/user-data
+    {{ images_path }}/{{ vm.name }}-cloudinit/meta-data
+  args:
+    creates: "{{ images_path }}/{{ vm.name }}-seed.iso"
+  loop: "{{ vms }}"
+  loop_control:
+    loop_var: vm
+
+- name: Check which VMs already exist
+  command: virsh dominfo {{ vm.name }}
+  register: vm_check
+  ignore_errors: true
+  changed_when: false
+  loop: "{{ vms }}"
+  loop_control:
+    loop_var: vm
+
+- name: Create VM using virt-install
+  command: >
+    virt-install
+    --name {{ vm_result.vm.name }}
+    --memory {{ vm_memory }}
+    --vcpus {{ vm_vcpus }}
+    --disk {{ images_path }}/{{ vm_result.vm.name }}.qcow2,device=disk,bus=virtio
+    --disk {{ images_path }}/{{ vm_result.vm.name }}-seed.iso,device=cdrom
+    --os-variant rhel8.10
+    --network bridge={{ vm_network }},model=virtio
+    --graphics none
+    --noautoconsole
+    --import
+    --boot hd
+  loop: "{{ vm_check.results }}"
+  loop_control:
+    loop_var: vm_result
+  when: vm_result.rc != 0
+
+- name: Wait for VMs to boot
+  pause:
+    seconds: 60
+
+- name: Verify all VMs are running
+  command: virsh list --all
+  register: virsh_output
+  changed_when: false
+
+- name: Show VM list
+  debug:
+    msg: "{{ virsh_output.stdout_lines }}"

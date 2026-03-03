@@ -22,3 +22,9 @@
 
     - role: rhel-vm-destroy
       tags: rhel-vm-destroy
+
+    - role: vfio-setup
+      tags: vfio-setup
+
+    - role: vfio-destroy
+      tags: vfio-destroy

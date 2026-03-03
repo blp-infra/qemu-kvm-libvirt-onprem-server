@@ -1,0 +1,38 @@
+---
+- name: Remove IOMMU from GRUB cmdline
+  lineinfile:
+    path: /etc/default/grub
+    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
+    line: 'GRUB_CMDLINE_LINUX_DEFAULT=""'
+    backup: true
+
+- name: Update GRUB
+  command: update-grub
+
+- name: Remove vfio modules load config
+  file:
+    path: /etc/modules-load.d/vfio.conf
+    state: absent
+
+- name: Remove vfio-pci options config
+  file:
+    path: /etc/modprobe.d/vfio-pci.conf
+    state: absent
+
+- name: Remove NVIDIA blacklist
+  file:
+    path: /etc/modprobe.d/blacklist-nvidia.conf
+    state: absent
+
+- name: Update initramfs
+  command: update-initramfs -u
+
+- name: REBOOT REQUIRED NOTICE
+  debug:
+    msg:
+      - "================================================"
+      - "VFIO removed. REBOOT REQUIRED!"
+      - "After reboot run:"
+      - "  nvidia-smi"
+      - "  Should show GPU back on host"
+      - "================================================"

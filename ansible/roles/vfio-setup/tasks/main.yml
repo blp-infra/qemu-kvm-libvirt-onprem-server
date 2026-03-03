@@ -1,0 +1,82 @@
+---
+- name: Check current GRUB cmdline
+  command: cat /etc/default/grub
+  register: grub_current
+  changed_when: false
+
+- name: Show current GRUB
+  debug:
+    msg: "{{ grub_current.stdout_lines }}"
+
+- name: Enable IOMMU in GRUB for AMD
+  lineinfile:
+    path: /etc/default/grub
+    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT='
+    line: 'GRUB_CMDLINE_LINUX_DEFAULT="amd_iommu=on iommu=pt"'
+    backup: true
+
+- name: Update GRUB
+  command: update-grub
+  register: grub_update
+
+- name: Show GRUB update output
+  debug:
+    msg: "{{ grub_update.stderr_lines }}"
+
+- name: Load vfio modules at boot
+  copy:
+    dest: /etc/modules-load.d/vfio.conf
+    content: |
+      vfio
+      vfio_iommu_type1
+      vfio_pci
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Deploy vfio-pci options config
+  template:
+    src: vfio.conf.j2
+    dest: /etc/modprobe.d/vfio-pci.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Blacklist NVIDIA driver on host (so VFIO can claim GPU)
+  copy:
+    dest: /etc/modprobe.d/blacklist-nvidia.conf
+    content: |
+      blacklist nouveau
+      blacklist nvidia
+      blacklist nvidia_drm
+      blacklist nvidia_modeset
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Update initramfs
+  command: update-initramfs -u
+  register: initramfs_update
+
+- name: Show initramfs output
+  debug:
+    msg: "{{ initramfs_update.stderr_lines }}"
+
+- name: Verify GRUB cmdline was updated
+  command: grep GRUB_CMDLINE_LINUX_DEFAULT /etc/default/grub
+  register: grub_verify
+  changed_when: false
+
+- name: Show final GRUB cmdline
+  debug:
+    msg: "{{ grub_verify.stdout_lines }}"
+
+- name: REBOOT REQUIRED NOTICE
+  debug:
+    msg:
+      - "================================================"
+      - "VFIO config complete. REBOOT REQUIRED!"
+      - "After reboot run:"
+      - "  lspci -k | grep -A3 'NVIDIA'"
+      - "  Should show: Kernel driver in use: vfio-pci"
+      - "================================================"

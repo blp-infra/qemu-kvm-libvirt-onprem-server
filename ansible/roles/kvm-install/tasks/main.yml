@@ -1,0 +1,114 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install KVM and virtualization packages
+  apt:
+    name:
+      - qemu-kvm
+      - qemu-utils
+      - libvirt-daemon-system
+      - libvirt-clients
+      - bridge-utils
+      - virt-manager
+      - virtinst
+      - cpu-checker
+      - python3-libvirt
+      - python3-lxml
+      - libosinfo-bin
+      - libguestfs-tools
+      - cloud-image-utils
+    state: present
+    update_cache: true
+
+- name: Start and enable libvirtd
+  service:
+    name: libvirtd
+    state: started
+    enabled: true
+
+- name: Add user to libvirt group
+  user:
+    name: blpdevops
+    groups: libvirt
+    append: true
+
+- name: Add user to kvm group
+  user:
+    name: blpdevops
+    groups: kvm
+    append: true
+
+- name: Verify KVM is working
+  command: kvm-ok
+  register: kvm_ok
+  changed_when: false
+
+- name: Show KVM status
+  debug:
+    msg: "{{ kvm_ok.stdout_lines }}"
+
+- name: Verify libvirtd is running
+  command: virsh list --all
+  register: virsh_list
+  changed_when: false
+
+- name: Show virsh output
+  debug:
+    msg: "{{ virsh_list.stdout_lines }}"
+
+- name: Check qemu-img is available
+  command: qemu-img --version
+  register: qemu_img_version
+  changed_when: false
+
+- name: Show qemu-img version
+  debug:
+    msg: "{{ qemu_img_version.stdout_lines }}"
+
+- name: Disable default libvirt network (we use br0)
+  command: virsh net-destroy default
+  ignore_errors: true
+  
+
+- name: Set default libvirt network to not autostart
+  command: virsh net-autostart --disable default
+  ignore_errors: true
+  
+
+- name: Deploy br0 network XML
+  template:
+    src: br0-network.xml.j2
+    dest: /tmp/br0-network.xml
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Check if br0 network already defined in libvirt
+  command: virsh net-info br0
+  register: br0_net_check
+  ignore_errors: true
+  changed_when: false
+
+- name: Define br0 network in libvirt
+  command: virsh net-define /tmp/br0-network.xml
+  when: br0_net_check.rc != 0
+
+- name: Start br0 network
+  command: virsh net-start br0
+  when: br0_net_check.rc != 0
+  ignore_errors: true
+
+- name: Set br0 network to autostart
+  command: virsh net-autostart br0
+
+- name: Verify libvirt networks
+  command: virsh net-list --all
+  register: net_list
+  changed_when: false
+
+- name: Show network list
+  debug:
+    msg: "{{ net_list.stdout_lines }}"    

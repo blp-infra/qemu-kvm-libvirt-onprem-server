@@ -1,0 +1,21 @@
+base_image: /data/isos/rhel-8.10-x86_64-kvm.qcow2
+images_path: /var/lib/libvirt/images
+vm_disk_size: 100G
+vm_memory: 16384
+vm_vcpus: 8
+vm_network: br0
+root_password: echo@TEST2026
+
+vms:
+  - name: rhel-master
+    ip: 192.168.1.72
+    gateway: 192.168.1.5
+    dns: 8.8.8.8
+  - name: rhel-worker1
+    ip: 192.168.1.73
+    gateway: 192.168.1.5
+    dns: 8.8.8.8
+  - name: rhel-worker2
+    ip: 192.168.1.74
+    gateway: 192.168.1.5
+    dns: 8.8.8.8

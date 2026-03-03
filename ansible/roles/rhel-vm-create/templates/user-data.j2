@@ -1,0 +1,19 @@
+#cloud-config
+hostname: {{ vm.name }}
+manage_etc_hosts: true
+
+chpasswd:
+  list: |
+    root:{{ root_password }}
+  expire: false
+
+ssh_pwauth: true
+
+runcmd:
+  - nmcli con mod eth0 ipv4.addresses {{ vm.ip }}/24
+  - nmcli con mod eth0 ipv4.gateway {{ vm.gateway }}
+  - nmcli con mod eth0 ipv4.dns {{ vm.dns }}
+  - nmcli con mod eth0 ipv4.method manual
+  - nmcli con mod eth0 connection.autoconnect yes
+  - nmcli con up eth0
+  - systemctl disable cloud-init
